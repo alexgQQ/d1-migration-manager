@@ -10,8 +10,8 @@ rmenv: ## delete the dev virtual environment
 	rm .venv
 
 fmt: ## format with black and isort
-	black d1-migration-manager/*.py tests/*.py
-	isort d1-migration-manager/*.py tests/*.py
+	black d1_migration_manager/*.py tests/*.py
+	isort d1_migration_manager/*.py tests/*.py
 
 test: ## run test suite
 	python -m unittest discover -s tests

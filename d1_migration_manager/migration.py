@@ -30,7 +30,9 @@ class MigrationFile:
         slugged = message.strip().lower().replace(" ", "_")
         return f"{number:04}_{slugged}.sql"
 
-
+# These sql functions are gross but I'm not sure how else to build this sort of formatter
+# it is usually best practice to parameterize and pass to the engine but this is for direct
+# connection and not just rendering to string sql, it works for now but would be good to revisit
 def insert_sql(table: str, data: dict):
     keys = []
     vals = []
@@ -72,8 +74,8 @@ def changes_since(db: sqlite3.Connection, since: datetime):
     """
     params = (since.timestamp(),)
     db.row_factory = ChangeEvent.sqlite_factory
-    db.execute(sql, params)
-    events = db.fetchall()
+    query = db.execute(sql, params)
+    events = query.fetchall()
 
     for event in events:
         if event.type == "created":
@@ -101,8 +103,8 @@ def any_changes(db: sqlite3.Connection, since: datetime) -> bool:
     SELECT COUNT(*) FROM "changefeed" WHERE "time" > ?;
     """
     params = (since.timestamp(),)
-    db.execute(sql, params)
-    count = db.fetchone()
+    count = db.execute(sql, params)
+    count = count.fetchone()[0]
     return count > 0
 
 
@@ -153,3 +155,9 @@ def create_migration(db, directory, message, schema=False):
         create_schema_migration(directory, message, number)
     elif data_changes:
         create_data_migration(db, directory, message, number, prev_date)
+
+
+def create_sqldump(db):
+    # python 3.13+ has a filter arg for this to exclude objects
+    # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
+    pass

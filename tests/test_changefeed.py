@@ -1,4 +1,3 @@
-import json
 import sqlite3
 import unittest
 
@@ -25,7 +24,7 @@ class TestChangeFeed(unittest.TestCase):
         """
         self.db.execute(table_ddl)
 
-    def test_save_batch_token(self):
+    def test_create_change_table(self):
         create_change_table(self.db, "test_table")
 
     def test_all_tables(self):

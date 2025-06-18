@@ -2,7 +2,7 @@ import json
 import sqlite3
 import unittest
 
-from d1_migration_manager import (TABLE_NAME, all_tables, create_change_table,
+from d1_migration_manager import (TABLE_NAME, ChangeEvent, all_tables, create_change_table,
                                   track_table)
 
 
@@ -56,17 +56,16 @@ class TestChangeFeed(unittest.TestCase):
         sql = f"""
         SELECT * FROM "{TABLE_NAME}";
         """
-        self.db.row_factory = sqlite3.Row
+        self.db.row_factory = ChangeEvent.sqlite_factory
         result = self.db.execute(sql).fetchone()
-        data = json.loads(result["data"])
-        self.assertIn("new", data.keys())
-        data = data["new"]
+        self.assertIn("new", result.data.keys())
+        data = result.data["new"]
         self.assertEqual(data["data"], test_str)
         self.assertEqual(data["value"], test_int)
 
-        self.assertEqual(result["instance"], data["id"])
-        self.assertEqual(result["table_source"], test_table)
-        self.assertEqual(result["type"], "created")
+        self.assertEqual(result.instance, data["id"])
+        self.assertEqual(result.table_source, test_table)
+        self.assertEqual(result.type, "created")
 
     def test_track_table_update(self):
         test_table = "foobar"
@@ -97,13 +96,12 @@ class TestChangeFeed(unittest.TestCase):
         sql = f"""
         SELECT * FROM "{TABLE_NAME}";
         """
-        self.db.row_factory = sqlite3.Row
+        self.db.row_factory = ChangeEvent.sqlite_factory
         result = self.db.execute(sql).fetchone()
-        data = json.loads(result["data"])
-        self.assertIn("new", data.keys())
-        self.assertIn("old", data.keys())
-        new_data = data["new"]
-        old_data = data["old"]
+        self.assertIn("new", result.data.keys())
+        self.assertIn("old", result.data.keys())
+        new_data = result.data["new"]
+        old_data = result.data["old"]
 
         self.assertEqual(new_data["data"], updated_str)
         self.assertEqual(new_data["value"], updated_int)
@@ -111,9 +109,9 @@ class TestChangeFeed(unittest.TestCase):
         self.assertEqual(old_data["data"], test_str)
         self.assertEqual(old_data["value"], test_int)
 
-        self.assertEqual(result["instance"], new_data["id"])
-        self.assertEqual(result["table_source"], test_table)
-        self.assertEqual(result["type"], "updated")
+        self.assertEqual(result.instance, new_data["id"])
+        self.assertEqual(result.table_source, test_table)
+        self.assertEqual(result.type, "updated")
 
     def test_track_table_delete(self):
         test_table = "foobar"
@@ -140,14 +138,13 @@ class TestChangeFeed(unittest.TestCase):
         sql = f"""
         SELECT * FROM "{TABLE_NAME}";
         """
-        self.db.row_factory = sqlite3.Row
+        self.db.row_factory = ChangeEvent.sqlite_factory
         result = self.db.execute(sql).fetchone()
-        data = json.loads(result["data"])
-        self.assertIn("old", data.keys())
-        data = data["old"]
+        self.assertIn("old", result.data.keys())
+        data = result.data["old"]
         self.assertEqual(data["data"], test_str)
         self.assertEqual(data["value"], test_int)
 
-        self.assertEqual(result["instance"], data["id"])
-        self.assertEqual(result["table_source"], test_table)
-        self.assertEqual(result["type"], "deleted")
+        self.assertEqual(result.instance, data["id"])
+        self.assertEqual(result.table_source, test_table)
+        self.assertEqual(result.type, "deleted")

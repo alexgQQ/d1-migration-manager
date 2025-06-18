@@ -1,4 +1,6 @@
 import sqlite3
+import json
+from datetime import datetime
 from typing import NamedTuple, Optional
 
 SQL_EVENTS = ("INSERT", "UPDATE", "DELETE")
@@ -14,8 +16,22 @@ class ChangeEvent(NamedTuple):
     instance: int
     table_source: str
     type: str
-    time: int
-    data: str
+    time: datetime
+    data: dict
+
+    @staticmethod
+    def sqlite_factory(cursor, row):
+        kwargs = {}
+        for i, column in enumerate(cursor.description):
+            field = column[0]
+            value = row[i]
+            if field == "data":
+                kwargs[field] = json.loads(value)
+            elif field == "time":
+                kwargs[field] = datetime.fromtimestamp(value)
+            else:
+                kwargs[field] = value
+        return ChangeEvent(**kwargs)
 
 
 def create_change_table(db: sqlite3.Connection, name: str) -> str:

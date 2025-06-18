@@ -2,7 +2,8 @@ import sqlite3
 import unittest
 from datetime import datetime
 
-from d1_migration_manager import (insert_sql, update_sql, delete_sql, MigrationFile)
+from d1_migration_manager import (MigrationFile, delete_sql, insert_sql,
+                                  update_sql)
 
 
 class TestMigrationSQL(unittest.TestCase):
@@ -73,7 +74,6 @@ class TestMigrationSQL(unittest.TestCase):
 
 
 class TestMigrationFile(unittest.TestCase):
-
     def test_filename(self):
         filename = MigrationFile.filename("this is a test", 5)
         expected = "0005_this_is_a_test.sql"

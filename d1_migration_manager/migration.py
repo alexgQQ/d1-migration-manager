@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 from datetime import UTC, datetime
 
 from d1_migration_manager import ChangeEvent
@@ -29,6 +29,7 @@ class MigrationFile:
     def filename(message, number):
         slugged = message.strip().lower().replace(" ", "_")
         return f"{number:04}_{slugged}.sql"
+
 
 # These sql functions are gross but I'm not sure how else to build this sort of formatter
 # it is usually best practice to parameterize and pass to the engine but this is for direct

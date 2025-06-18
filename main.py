@@ -1,9 +1,10 @@
-import sys
 import argparse
 import os
 import sqlite3
+import sys
 
-from d1_migration_manager import MigrationFile, create_migration, any_changes, previous_migration, track_changes
+from d1_migration_manager import (MigrationFile, any_changes, create_migration,
+                                  previous_migration, track_changes)
 
 
 def exit(message=None, code=0, error=None):
@@ -42,7 +43,10 @@ parser.add_argument(
     help="A unique message for a created migration file",
 )
 parser.add_argument(
-    "-t", "--track", action="store_true", help="Apply changefeed triggers to the database"
+    "-t",
+    "--track",
+    action="store_true",
+    help="Apply changefeed triggers to the database",
 )
 parser.add_argument(
     "-s", "--schema", action="store_true", help="Generate a file for a schema migration"
@@ -58,7 +62,6 @@ parser.add_argument(
     action="store_true",
     help="Generate a sql dump to use as an initial migration file",
 )
-
 
 
 if __name__ == "__main__":

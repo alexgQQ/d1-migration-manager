@@ -31,34 +31,52 @@ class MigrationFile:
         return f"{number:04}_{slugged}.sql"
 
 
-# These sql functions are gross but I'm not sure how else to build this sort of formatter
-# it is usually best practice to parameterize and pass to the engine but this is for direct
-# connection and not just rendering to string sql, it works for now but would be good to revisit
-def insert_sql(table: str, data: dict):
-    keys = []
-    vals = []
+# TODO: This is meant to coalesce simple python types into their valid SQL syntax
+#   because of that I do not intend to support dict|list|tuple|set
+#   however datetime types can be represented by either an INTEGER timestamps or a TEXT
+#   iso representation so I need a way to reconcile that, for now just convert it beforehand
+def parameterize(sql: str, params: list) -> str:
+    for param in params:
+        if isinstance(param, bool):
+            param = "1" if param else "0"
+        elif param is None:
+            param = "NULL"
+        elif isinstance(param, (int, float)):  # Should I account for complex?
+            param = str(param)
+        else:
+            param = f"'{param}'"
+        sql = sql.replace("?", param, 1)
+    return sql
+
+
+def insert_sql(table: str, data: dict) -> str:
+    columns = []
+    values = []
+    params = []
     for key, val in data.items():
-        keys.append(f'"{key}"')
-        vals.append(f"'{val}'")
+        columns.append(key)
+        values.append(val)
+        params.append("?")
 
-    keys = "(" + ",".join(keys) + ")"
-    vals = "(" + ",".join(vals) + ")"
-    sql = f"""
-    INSERT INTO "{table}" {keys} VALUES{vals};
-    """
-    return sql.strip("\n ")
+    sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES({','.join(params)});"
+    return parameterize(sql, values)
 
 
-def update_sql(table: str, instance_id: int, data: dict):
-    updates = []
+def update_sql(table: str, instance_id: int, data: dict) -> str:
+    columns = []
+    values = []
     for key, val in data.items():
-        updates.append(f"{key} = '{val}'")
+        columns.append(f"{key}=?")
+        values.append(val)
+    values.append(instance_id)
 
-    updates = ",".join(updates)
-    sql = f"""
-    UPDATE "{table}" SET {updates} WHERE ("{table}"."id" = {instance_id});
-    """
-    return sql.strip("\n ")
+    sql = f"UPDATE {table} SET {','.join(columns)} WHERE ({table}.id = ?);"
+    return parameterize(sql, values)
+
+
+def delete_sql(table: str, instance_id: int) -> str:
+    sql = f"DELETE FROM {table} WHERE ({table}.id = ?);"
+    return parameterize(sql, [instance_id])
 
 
 def delete_sql(table: str, instance_id: int):

@@ -2,7 +2,8 @@ import sqlite3
 import unittest
 
 from d1_migration_manager import (TABLE_NAME, ChangeEvent, all_tables,
-                                  create_change_table, track_table, untrack_table)
+                                  create_change_table, track_table,
+                                  untrack_table)
 
 
 class TestChangeFeed(unittest.TestCase):

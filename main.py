@@ -119,7 +119,7 @@ if __name__ == "__main__":
     elif prev is not None and args.initial:
         exit("migration files found unable to create an initial migration", code=1)
     elif args.initial:
-        filepath = create_initial_migration(args.directory, args.message, 1)
+        filepath = create_initial_migration(db, args.directory, args.message, 1)
         exit(f"Migration file created at {filepath}")
 
     try:

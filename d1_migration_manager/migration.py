@@ -210,7 +210,20 @@ def create_schema_migration(directory: str, message: str, number: int) -> str:
     return filepath
 
 
-def create_initial_migration():
-    # python 3.13+ has a filter arg for this to exclude objects
-    # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
-    pass
+def create_initial_migration(
+    db: sqlite3.Connection, directory: str, message: str, number: int
+) -> str:
+    """Create a sql dump as the initial migration"""
+    now = datetime.now(UTC)
+    filename = MigrationFile.filename(message, number)
+    filepath = os.path.join(directory, filename)
+    header = MigrationFile.header(number, now)
+    with open(filepath, "w") as fobj:
+        fobj.write(header + "\n")
+        fobj.write("PRAGMA foreign_keys=OFF;\n")
+        # TODO: python 3.13+ has a filter arg for this to exclude objects
+        # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
+        # for now it would have to just be a str check to exclude any table
+        for line in db.iterdump():
+            fobj.write(line + "\n")
+    return filepath

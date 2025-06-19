@@ -1,6 +1,7 @@
 import os
 import re
 import sqlite3
+import warnings
 from datetime import UTC, datetime
 from glob import glob
 
@@ -129,22 +130,22 @@ def delete_sql(table: str, instance_id: int) -> str:
     return parameterize(sql, [instance_id])
 
 
-def delete_sql(table: str, instance_id: int):
-    sql = f"""
-    DELETE FROM "{table}" WHERE ("{table}"."id" = {instance_id});
-    """
-    return sql.strip("\n ")
-
-
 def changes_since(db: sqlite3.Connection, since: datetime):
-    sql = """
-    SELECT "id", "table_source", "instance", "type", "time", "data" FROM "changefeed"
-    WHERE "time" > ? ORDER BY "time";
-    """
+    """Emit the related INSERT|UPDATE|DELETE SQL for any new changes in chronological order"""
+    sql = "SELECT id, table_source, instance, type, time, data FROM changefeed WHERE time > ? ORDER BY time;"
     params = (since.timestamp(),)
     db.row_factory = ChangeEvent.sqlite_factory
     query = db.execute(sql, params)
     events = query.fetchall()
+
+    # TODO: I'd like to reconcile events on the same instances but I do want to keep any database
+    # using the migrations as in sync as possible. It should be safe for something like subsequent UPDATES on the
+    # same instance but for something like AUTOINCREMENT skipping an event could cause drift in id values
+    # say if I have an INSERT event and then a DELETE event on the same instance. If I reconcile those
+    # then no action would be taken and the ROWID of the applied database would not be incremented the same.
+    # On the flip side I would need AUTOINCREMENT applied to primary keys so they do not overlap in cases like this.
+    # https://www.sqlite.org/autoinc.html
+    # For now it is best to just emit all events as sql and do no reconciliation.
 
     for event in events:
         if event.type == "created":
@@ -162,71 +163,54 @@ def changes_since(db: sqlite3.Connection, since: datetime):
         elif event.type == "deleted":
             sql = delete_sql(event.table_source, event.instance)
         else:
-            # Should not be here
+            warnings.warn(f"Unexpected change event type encountered - {event.type}")
             continue
         yield sql
 
 
 def any_changes(db: sqlite3.Connection, since: datetime) -> bool:
-    sql = f"""
-    SELECT COUNT(*) FROM "changefeed" WHERE "time" > ?;
-    """
+    """Are there any new audit changes"""
+    sql = "SELECT COUNT(*) FROM changefeed WHERE time > ?;"
     params = (since.timestamp(),)
     count = db.execute(sql, params)
     count = count.fetchone()[0]
     return count > 0
 
 
-def previous_migration(directory):
-    files = os.listdir(directory)
-    if len(files) <= 0:
-        return False
-    last = sorted(files)[-1]
-    return last
-
-
-def create_data_migration(db, directory, message, number, prev_date):
+def create_data_migration(
+    db: sqlite3.Connection,
+    directory: str,
+    message: str,
+    number: int,
+    prev_date: datetime,
+) -> str:
+    """Create a migration file containing INSERT|UPDATE|DELETE statements representing audit changes"""
     now = datetime.now(UTC)
     filename = MigrationFile.filename(message, number)
     filepath = os.path.join(directory, filename)
     header = MigrationFile.header(number, now)
     with open(filepath, "w") as fobj:
-        fobj.write(header)
+        fobj.write(header + "\n")
         fobj.write("PRAGMA foreign_keys=OFF;\n")
         fobj.write("BEGIN TRANSACTION;\n")
         for sql in changes_since(db, prev_date):
             fobj.write(sql + "\n")
         fobj.write("COMMIT;\n")
+    return filepath
 
 
-def create_schema_migration(directory, message, number):
+def create_schema_migration(directory: str, message: str, number: int) -> str:
+    """Create a blank migration file in sequence"""
     now = datetime.now(UTC)
     filename = MigrationFile.filename(message, number)
     filepath = os.path.join(directory, filename)
     header = MigrationFile.header(number, now)
     with open(filepath, "w") as fobj:
-        fobj.write(header)
+        fobj.write(header + "\n")
+    return filepath
 
 
-def create_migration(db, directory, message, schema=False):
-    prev = previous_migration(directory)
-    prev = os.path.join(directory, prev)
-    with open(prev, "r") as fobj:
-        header = fobj.readline()
-    prev_number, prev_date = MigrationFile.parse_header(header)
-    data_changes = any_changes(db, prev_date)
-    number = prev_number + 1
-
-    if data_changes and schema:
-        raise Exception("There are data changes detected that must be tracked first")
-    elif schema:
-        # Make an empty sql file
-        create_schema_migration(directory, message, number)
-    elif data_changes:
-        create_data_migration(db, directory, message, number, prev_date)
-
-
-def create_sqldump(db):
+def create_initial_migration():
     # python 3.13+ has a filter arg for this to exclude objects
     # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
     pass

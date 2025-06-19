@@ -1,11 +1,10 @@
 import os
 import re
 import sqlite3
-import warnings
 from datetime import UTC, datetime
 from glob import glob
 
-from d1_migration_manager import ChangeEvent
+from d1_migration_manager.sql import sql_changes_since
 
 
 class MigrationFile:
@@ -82,101 +81,6 @@ class MigrationFile:
         return last
 
 
-# TODO: This is meant to coalesce simple python types into their valid SQL syntax
-#   because of that I do not intend to support dict|list|tuple|set
-#   however datetime types can be represented by either an INTEGER timestamps or a TEXT
-#   iso representation so I need a way to reconcile that, for now just convert it beforehand
-def parameterize(sql: str, params: list) -> str:
-    for param in params:
-        if isinstance(param, bool):
-            param = "1" if param else "0"
-        elif param is None:
-            param = "NULL"
-        elif isinstance(param, (int, float)):  # Should I account for complex?
-            param = str(param)
-        else:
-            param = f"'{param}'"
-        sql = sql.replace("?", param, 1)
-    return sql
-
-
-def insert_sql(table: str, data: dict) -> str:
-    columns = []
-    values = []
-    params = []
-    for key, val in data.items():
-        columns.append(key)
-        values.append(val)
-        params.append("?")
-
-    sql = f"INSERT INTO {table} ({','.join(columns)}) VALUES({','.join(params)});"
-    return parameterize(sql, values)
-
-
-def update_sql(table: str, instance_id: int, data: dict) -> str:
-    columns = []
-    values = []
-    for key, val in data.items():
-        columns.append(f"{key}=?")
-        values.append(val)
-    values.append(instance_id)
-
-    sql = f"UPDATE {table} SET {','.join(columns)} WHERE ({table}.id = ?);"
-    return parameterize(sql, values)
-
-
-def delete_sql(table: str, instance_id: int) -> str:
-    sql = f"DELETE FROM {table} WHERE ({table}.id = ?);"
-    return parameterize(sql, [instance_id])
-
-
-def changes_since(db: sqlite3.Connection, since: datetime):
-    """Emit the related INSERT|UPDATE|DELETE SQL for any new changes in chronological order"""
-    sql = "SELECT id, table_source, instance, type, time, data FROM changefeed WHERE time > ? ORDER BY time;"
-    params = (since.timestamp(),)
-    db.row_factory = ChangeEvent.sqlite_factory
-    query = db.execute(sql, params)
-    events = query.fetchall()
-
-    # TODO: I'd like to reconcile events on the same instances but I do want to keep any database
-    # using the migrations as in sync as possible. It should be safe for something like subsequent UPDATES on the
-    # same instance but for something like AUTOINCREMENT skipping an event could cause drift in id values
-    # say if I have an INSERT event and then a DELETE event on the same instance. If I reconcile those
-    # then no action would be taken and the ROWID of the applied database would not be incremented the same.
-    # On the flip side I would need AUTOINCREMENT applied to primary keys so they do not overlap in cases like this.
-    # https://www.sqlite.org/autoinc.html
-    # For now it is best to just emit all events as sql and do no reconciliation.
-
-    for event in events:
-        if event.type == "created":
-            new = event.data["new"]
-            sql = insert_sql(event.table_source, new)
-        elif event.type == "updated":
-            new = event.data["new"]
-            old = event.data["old"]
-            diff = {}
-            for key, new_val in new.items():
-                if new_val == old[key]:
-                    continue
-                diff[key] = new_val
-            sql = update_sql(event.table_source, event.instance, diff)
-        elif event.type == "deleted":
-            sql = delete_sql(event.table_source, event.instance)
-        else:
-            warnings.warn(f"Unexpected change event type encountered - {event.type}")
-            continue
-        yield sql
-
-
-def any_changes(db: sqlite3.Connection, since: datetime) -> bool:
-    """Are there any new audit changes"""
-    sql = "SELECT COUNT(*) FROM changefeed WHERE time > ?;"
-    params = (since.timestamp(),)
-    count = db.execute(sql, params)
-    count = count.fetchone()[0]
-    return count > 0
-
-
 def create_data_migration(
     db: sqlite3.Connection,
     directory: str,
@@ -193,7 +97,7 @@ def create_data_migration(
         fobj.write(header + "\n")
         fobj.write("PRAGMA foreign_keys=OFF;\n")
         fobj.write("BEGIN TRANSACTION;\n")
-        for sql in changes_since(db, prev_date):
+        for sql in sql_changes_since(db, prev_date):
             fobj.write(sql + "\n")
         fobj.write("COMMIT;\n")
     return filepath

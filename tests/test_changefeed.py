@@ -2,7 +2,7 @@ import sqlite3
 import unittest
 
 from d1_migration_manager import (TABLE_NAME, ChangeEvent, all_tables,
-                                  create_change_table, track_table)
+                                  create_change_table, track_table, untrack_table)
 
 
 class TestChangeFeed(unittest.TestCase):
@@ -147,3 +147,28 @@ class TestChangeFeed(unittest.TestCase):
         self.assertEqual(result.instance, data["id"])
         self.assertEqual(result.table_source, test_table)
         self.assertEqual(result.type, "deleted")
+
+    def test_untrack_table(self):
+        test_table = "foobar"
+        self.create_test_table(test_table)
+        create_change_table(self.db, TABLE_NAME)
+        track_table(self.db, test_table, "INSERT")
+        untrack_table(self.db, test_table, "INSERT")
+
+        test_str = "text data"
+        test_int = 1
+        params = (test_str, test_int)
+        sql = f"""
+        INSERT INTO "{test_table}"
+        ("data", "value")
+        VALUES (?, ?);
+        """
+        self.db.execute(sql, params)
+
+        sql = f"""
+        SELECT COUNT(*) FROM "{TABLE_NAME}";
+        """
+        result = self.db.execute(sql).fetchone()
+        self.assertEqual(result[0], 0)
+        # This operation should be safe to reapply
+        untrack_table(self.db, test_table, "INSERT")

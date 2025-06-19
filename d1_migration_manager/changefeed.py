@@ -154,6 +154,17 @@ def track_table(
     cursor.execute(statement)
 
 
+def untrack_table(
+    db: sqlite3.Connection, table: str, event: str, change_table: str = TABLE_NAME
+) -> None:
+    """
+    Removes the AFTER trigger applied by `track_table`
+    """
+    cursor = db.cursor()
+    trigger_name = f"{change_table}_{table}_{event.lower()}_trigger"
+    cursor.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")
+
+
 def track_changes(
     db: sqlite3.Connection,
     tables: Optional[list[str]] = None,
@@ -174,3 +185,23 @@ def track_changes(
         for table in tables:
             for event in SQL_EVENTS:
                 track_table(db, table, event)
+
+
+def untrack_changes(
+    db: sqlite3.Connection,
+    tables: Optional[list[str]] = None,
+) -> None:
+    """
+    Removes transactional change triggers to the target sqlite database.
+    """
+    with db:
+        if db.in_transaction:
+            msg = "Transaction in progress. COMMIT or ROLLBACK and try again."
+            raise sqlite3.ProgrammingError(msg)
+
+        if tables is None:
+            tables = all_tables(db)
+
+        for table in tables:
+            for event in SQL_EVENTS:
+                untrack_table(db, table, event)

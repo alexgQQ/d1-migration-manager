@@ -7,7 +7,8 @@ from typing import Optional
 from d1_migration_manager import (MigrationFile, any_changes,
                                   create_data_migration,
                                   create_initial_migration,
-                                  create_schema_migration, track_changes)
+                                  create_schema_migration, track_changes,
+                                  untrack_changes)
 
 
 def exit(
@@ -103,9 +104,10 @@ if __name__ == "__main__":
 
     if args.track:
         track_changes(db)
-        exit()
+        exit("audit triggers applied")
     elif args.untrack:
-        exit(error=NotImplemented("implement untrack"))
+        untrack_changes(db)
+        exit("audit triggers removed")
 
     try:
         prev = MigrationFile.latest(args.directory)

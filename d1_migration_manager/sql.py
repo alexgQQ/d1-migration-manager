@@ -1,7 +1,7 @@
 import json
 import sqlite3
 import warnings
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Generator, NamedTuple, Optional, Self
 
 
@@ -93,7 +93,7 @@ class ChangeEvent(NamedTuple):
             if field == "data":
                 kwargs[field] = json.loads(value)
             elif field == "time":
-                kwargs[field] = datetime.fromtimestamp(value)
+                kwargs[field] = datetime.fromtimestamp(value, tz=UTC)
             else:
                 kwargs[field] = value
         return ChangeEvent(**kwargs)

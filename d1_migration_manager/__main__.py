@@ -4,10 +4,10 @@ import sqlite3
 import sys
 from typing import Optional
 
-from d1_migration_manager import (MigrationFile, any_changes,
-                                  create_data_migration,
+from d1_migration_manager import (any_changes_since, create_data_migration,
                                   create_initial_migration,
-                                  create_schema_migration, track_changes,
+                                  create_schema_migration, latest_migration,
+                                  migration_file_header, track_changes,
                                   untrack_changes)
 
 
@@ -110,7 +110,7 @@ if __name__ == "__main__":
         exit("audit triggers removed")
 
     try:
-        prev = MigrationFile.latest(args.directory)
+        prev = latest_migration(args.directory)
     except RuntimeError as error:
         exit(error=error)
 
@@ -123,13 +123,11 @@ if __name__ == "__main__":
         exit(f"Migration file created at {filepath}")
 
     try:
-        with open(prev, "r") as fobj:
-            header = fobj.readline().strip().strip("\n")
-        prev_number, prev_date = MigrationFile.parse_header(header)
+        prev_number, prev_date = migration_file_header(prev)
     except (OSError, IOError, ValueError) as error:
         exit(error=error)
 
-    data_changes = any_changes(db, prev_date)
+    data_changes = any_changes_since(db, prev_date)
     if args.check:
         msg = "Data changes detected" if data_changes else "No data changes detected"
     elif args.schema:

@@ -131,3 +131,4 @@ cython_debug/
 .vscode/
 migrations/
 *.sqlite
+_build/

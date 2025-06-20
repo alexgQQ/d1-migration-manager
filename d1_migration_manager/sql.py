@@ -314,3 +314,8 @@ def sql_changes_since(
     # For now it is best to just emit all events as sql and do no reconciliation.
     for event in ChangeEvent.events_since(db, since):
         yield ChangeEvent.sql_from_change(event)
+
+
+def any_changes_since(db: sqlite3.Connection, dt: datetime) -> bool:
+    """Are there any data changes unaccounted for"""
+    return ChangeEvent.any_since(db, dt)

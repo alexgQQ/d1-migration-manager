@@ -131,3 +131,15 @@ def create_initial_migration(
         for line in db.iterdump():
             fobj.write(line + "\n")
     return filepath
+
+
+def latest_migration(directory: str) -> str | None:
+    """Returns the latest migration file in a directory"""
+    return MigrationFile.latest(directory)
+
+
+def migration_file_header(migration_file: str) -> tuple[int, datetime]:
+    """Read the header information from a migration file"""
+    with open(migration_file, "r") as fobj:
+        header = fobj.readline().strip().strip("\n")
+    return MigrationFile.parse_header(header)

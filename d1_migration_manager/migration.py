@@ -3,6 +3,7 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from glob import glob
+from typing import Iterator, Optional
 
 from d1_migration_manager.sql import sql_changes_since
 
@@ -81,54 +82,65 @@ class MigrationFile:
         return last
 
 
+def iter_data_migration(
+    db: sqlite3.Connection, since: datetime, tables: Optional[list[str]] = None
+) -> Iterator[str]:
+    yield "PRAGMA foreign_keys=OFF;"
+    yield "BEGIN TRANSACTION;"
+    for sql in sql_changes_since(db, since, tables):
+        yield sql
+    yield "COMMIT;"
+
+
+def iter_sql_dump(db: sqlite3.Connection) -> Iterator[str]:
+    yield "PRAGMA foreign_keys=OFF;"
+    yield "BEGIN TRANSACTION;"
+    # TODO: python 3.13+ has a filter arg for this to exclude objects
+    # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
+    # for now it would have to just be a str check to exclude any table
+    for line in db.iterdump():
+        yield line
+    yield "COMMIT;"
+
+
+def create_migration_file(directory: str, message: str, number: int) -> str:
+    now = datetime.now(UTC)
+    filename = MigrationFile.filename(message, number)
+    filepath = os.path.join(directory, filename)
+    header = MigrationFile.header(number, now)
+    with open(filepath, "w") as fobj:
+        fobj.write(header + "\n")
+    return filepath
+
+
 def create_data_migration(
     db: sqlite3.Connection,
     directory: str,
     message: str,
     number: int,
     prev_date: datetime,
+    tables: Optional[list[str]] = None,
 ) -> str:
     """Create a migration file containing INSERT|UPDATE|DELETE statements representing audit changes"""
-    now = datetime.now(UTC)
-    filename = MigrationFile.filename(message, number)
-    filepath = os.path.join(directory, filename)
-    header = MigrationFile.header(number, now)
+    filepath = create_migration_file(directory, message, number)
     with open(filepath, "w") as fobj:
-        fobj.write(header + "\n")
-        fobj.write("PRAGMA foreign_keys=OFF;\n")
-        fobj.write("BEGIN TRANSACTION;\n")
-        for sql in sql_changes_since(db, prev_date):
+        for sql in iter_data_migration(db, prev_date, tables):
             fobj.write(sql + "\n")
-        fobj.write("COMMIT;\n")
     return filepath
 
 
 def create_schema_migration(directory: str, message: str, number: int) -> str:
     """Create a blank migration file in sequence"""
-    now = datetime.now(UTC)
-    filename = MigrationFile.filename(message, number)
-    filepath = os.path.join(directory, filename)
-    header = MigrationFile.header(number, now)
-    with open(filepath, "w") as fobj:
-        fobj.write(header + "\n")
-    return filepath
+    return create_migration_file(directory, message, number)
 
 
 def create_initial_migration(
     db: sqlite3.Connection, directory: str, message: str, number: int
 ) -> str:
     """Create a sql dump as the initial migration"""
-    now = datetime.now(UTC)
-    filename = MigrationFile.filename(message, number)
-    filepath = os.path.join(directory, filename)
-    header = MigrationFile.header(number, now)
+    filepath = create_migration_file(directory, message, number)
     with open(filepath, "w") as fobj:
-        fobj.write(header + "\n")
-        fobj.write("PRAGMA foreign_keys=OFF;\n")
-        # TODO: python 3.13+ has a filter arg for this to exclude objects
-        # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
-        # for now it would have to just be a str check to exclude any table
-        for line in db.iterdump():
+        for line in iter_sql_dump(db):
             fobj.write(line + "\n")
     return filepath
 

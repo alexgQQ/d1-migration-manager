@@ -4,11 +4,12 @@ import sqlite3
 import sys
 from typing import Optional
 
-from d1_migration_manager import (any_changes_since, create_data_migration,
+from d1_migration_manager import (__version__, any_changes_since,
+                                  create_data_migration,
                                   create_initial_migration,
                                   create_schema_migration, latest_migration,
                                   migration_file_header, track_changes,
-                                  untrack_changes, __version__)
+                                  untrack_changes)
 
 
 def exit(
@@ -92,7 +93,11 @@ parser.add_argument(
     action="store_true",
     help="Show the version",
 )
-
+parser.add_argument(
+    "--tables",
+    nargs="*",
+    help="Database table to run against",
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -114,10 +119,10 @@ if __name__ == "__main__":
         exit(error=error)
 
     if args.track:
-        track_changes(db)
+        track_changes(db, args.tables)
         exit("audit triggers applied")
     elif args.untrack:
-        untrack_changes(db)
+        untrack_changes(db, args.tables)
         exit("audit triggers removed")
 
     try:
@@ -138,7 +143,7 @@ if __name__ == "__main__":
     except (OSError, IOError, ValueError) as error:
         exit(error=error)
 
-    data_changes = any_changes_since(db, prev_date)
+    data_changes = any_changes_since(db, prev_date, args.tables)
     if args.check:
         msg = "Data changes detected" if data_changes else "No data changes detected"
     elif args.schema:
@@ -153,7 +158,7 @@ if __name__ == "__main__":
         msg = f"Migration file created at {filepath}"
     elif create:
         filepath = create_data_migration(
-            db, args.directory, args.message, prev_number + 1, prev_date
+            db, args.directory, args.message, prev_number + 1, prev_date, args.tables
         )
         msg = f"Migration file created at {filepath}"
 

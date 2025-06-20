@@ -2,7 +2,7 @@ import json
 import sqlite3
 import warnings
 from datetime import UTC, datetime
-from typing import Generator, NamedTuple, Optional, Self
+from typing import Iterator, NamedTuple, Optional, Self
 
 
 class SQL:
@@ -99,19 +99,35 @@ class ChangeEvent(NamedTuple):
         return ChangeEvent(**kwargs)
 
     @staticmethod
-    def events_since(db: sqlite3.Connection, dt: datetime) -> tuple[Self]:
+    def events_since(
+        db: sqlite3.Connection, dt: datetime, tables: Optional[list[str]] = None
+    ) -> tuple[Self]:
         """Return change events since a datetime in chronological order"""
-        sql = f"SELECT * FROM {ChangeEvent.table_name()} WHERE time > ? ORDER BY time, id;"
-        params = (dt.timestamp(),)
+        table_name = ChangeEvent.table_name()
+        if tables is None:
+            sql = f"SELECT * FROM {table_name} WHERE time > ? ORDER BY time, id;"
+            params = (dt.timestamp(),)
+        else:
+            params = ",".join(("?" for _ in range(len(tables))))
+            sql = f"SELECT * FROM {table_name} WHERE time > ? AND table_source IN ({params}) ORDER BY time, id;"
+            params = [dt.timestamp()] + tables
         db.row_factory = ChangeEvent.sqlite_factory
         query = db.execute(sql, params)
         return query.fetchall()
 
     @staticmethod
-    def any_since(db: sqlite3.Connection, dt: datetime) -> bool:
+    def any_since(
+        db: sqlite3.Connection, dt: datetime, tables: Optional[list[str]] = None
+    ) -> bool:
         """Are there any new audit changes"""
-        sql = f"SELECT COUNT(*) FROM {ChangeEvent.table_name()} WHERE time > ?;"
-        params = (dt.timestamp(),)
+        table_name = ChangeEvent.table_name()
+        if tables is None:
+            sql = f"SELECT COUNT(*) FROM {table_name} WHERE time > ?;"
+            params = (dt.timestamp(),)
+        else:
+            params = ",".join(("?" for _ in range(len(tables))))
+            sql = f"SELECT COUNT(*) FROM {table_name} WHERE time > ? AND table_source IN ({params});"
+            params = [dt.timestamp()] + tables
         count = db.execute(sql, params)
         count = count.fetchone()[0]
         return count > 0
@@ -301,8 +317,8 @@ def untrack_changes(
 
 
 def sql_changes_since(
-    db: sqlite3.Connection, since: datetime
-) -> Generator[str, None, None]:
+    db: sqlite3.Connection, since: datetime, tables: Optional[list[str]] = None
+) -> Iterator[str]:
     """Emit the related INSERT|UPDATE|DELETE SQL for any new changes in a sequential order"""
     # TODO: I'd like to reconcile events on the same instances but I do want to keep any database
     # using the migrations as in sync as possible. It should be safe for something like subsequent UPDATES on the
@@ -312,10 +328,20 @@ def sql_changes_since(
     # On the flip side I would need AUTOINCREMENT applied to primary keys so they do not overlap in cases like this.
     # https://www.sqlite.org/autoinc.html
     # For now it is best to just emit all events as sql and do no reconciliation.
-    for event in ChangeEvent.events_since(db, since):
+    for event in ChangeEvent.events_since(db, since, tables):
         yield ChangeEvent.sql_from_change(event)
 
 
-def any_changes_since(db: sqlite3.Connection, dt: datetime) -> bool:
-    """Are there any data changes unaccounted for"""
-    return ChangeEvent.any_since(db, dt)
+def any_changes_since(
+    db: sqlite3.Connection, dt: datetime, tables: Optional[list[str]] = None
+) -> bool:
+    """Check if there are any new data changes since a given time.
+
+    Args:
+        db: A connection to a sqlite database.
+        dt: A datetime to check from up until now.
+
+    Returns:
+        Whether or not there are new data changes.
+    """
+    return ChangeEvent.any_since(db, dt, tables)

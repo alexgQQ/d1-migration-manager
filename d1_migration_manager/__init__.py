@@ -16,3 +16,4 @@ __all__ = [
     "latest_migration",
     "migration_file_header",
 ]
+__version__ = "0.1.0"

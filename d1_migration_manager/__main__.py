@@ -8,7 +8,7 @@ from d1_migration_manager import (any_changes_since, create_data_migration,
                                   create_initial_migration,
                                   create_schema_migration, latest_migration,
                                   migration_file_header, track_changes,
-                                  untrack_changes)
+                                  untrack_changes, __version__)
 
 
 def exit(
@@ -45,7 +45,7 @@ parser.add_argument(
     "-db",
     "--database",
     type=valid_file,
-    required=True,
+    required=False,
     help="The sqlite database to work against",
 )
 parser.add_argument(
@@ -87,12 +87,23 @@ parser.add_argument(
     action="store_true",
     help="Generate a sql dump to use as an initial migration file",
 )
+parser.add_argument(
+    "--version",
+    action="store_true",
+    help="Show the version",
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
+
+    if args.version:
+        exit(f"{__version__}")
+    elif not args.database:
+        parser.error("the following arguments are required: -db/--database")
+
     create = not args.check and not args.track and not args.untrack
-    if create and not args.message:
+    if create and not args.message and not args.initial:
         parser.error("a message must be provided when creating migration files")
     elif args.track and args.untrack:
         parser.error("cannot use the track and untrack flags together")
@@ -119,7 +130,7 @@ if __name__ == "__main__":
     elif prev is not None and args.initial:
         exit("migration files found unable to create an initial migration", code=1)
     elif args.initial:
-        filepath = create_initial_migration(db, args.directory, args.message, 1)
+        filepath = create_initial_migration(db, args.directory, "initial migration", 1)
         exit(f"Migration file created at {filepath}")
 
     try:

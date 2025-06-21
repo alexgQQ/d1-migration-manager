@@ -99,67 +99,67 @@ parser.add_argument(
     help="Database table to run against",
 )
 
-if __name__ == "__main__":
-    args = parser.parse_args()
+args = parser.parse_args()
 
-    if args.version:
-        exit(f"{__version__}")
-    elif not args.database:
-        parser.error("the following arguments are required: -db/--database")
+if args.version:
+    exit(f"{__version__}")
+elif not args.database:
+    parser.error("the following arguments are required: -db/--database")
 
-    create = not args.check and not args.track and not args.untrack
-    if create and not args.message and not args.initial:
-        parser.error("a message must be provided when creating migration files")
-    elif args.track and args.untrack:
-        parser.error("cannot use the track and untrack flags together")
+if not args.track and not args.untrack and not args.directory:
+    parser.error("the following arguments are required: -dir/--directory")
 
-    try:
-        db = sqlite3.connect(args.database)
-    except sqlite3.DatabaseError as error:
-        exit(error=error)
+create = not args.check and not args.track and not args.untrack
+if create and not args.message and not args.initial:
+    parser.error("a message must be provided when creating migration files")
+elif args.track and args.untrack:
+    parser.error("cannot use the track and untrack flags together")
 
-    if args.track:
-        track_changes(db, args.tables)
-        exit("audit triggers applied")
-    elif args.untrack:
-        untrack_changes(db, args.tables)
-        exit("audit triggers removed")
+try:
+    db = sqlite3.connect(args.database)
+except sqlite3.DatabaseError as error:
+    exit(error=error)
 
-    try:
-        prev = latest_migration(args.directory)
-    except RuntimeError as error:
-        exit(error=error)
+if args.track:
+    track_changes(db, args.tables)
+    exit("Audit triggers applied")
+elif args.untrack:
+    untrack_changes(db, args.tables)
+    exit("Audit triggers removed")
 
-    if prev is None and not args.initial:
-        exit("no migration files found please create an initial migration", code=1)
-    elif prev is not None and args.initial:
-        exit("migration files found unable to create an initial migration", code=1)
-    elif args.initial:
-        filepath = create_initial_migration(db, args.directory, "initial migration", 1)
-        exit(f"Migration file created at {filepath}")
+try:
+    prev = latest_migration(args.directory)
+except RuntimeError as error:
+    exit(error=error)
 
-    try:
-        prev_number, prev_date = migration_file_header(prev)
-    except (OSError, IOError, ValueError) as error:
-        exit(error=error)
+if prev is None and not args.initial:
+    exit("no migration files found please create an initial migration", code=1)
+elif prev is not None and args.initial:
+    exit("migration files found unable to create an initial migration", code=1)
+elif args.initial:
+    filepath = create_initial_migration(db, args.directory, "initial migration", 1)
+    exit(f"Migration file created at {filepath}")
 
-    data_changes = any_changes_since(db, prev_date, args.tables)
-    if args.check:
-        msg = "Data changes detected" if data_changes else "No data changes detected"
-    elif args.schema:
-        if data_changes:
-            exit(
-                "Data changes detected create a data migration before a schema migration",
-                code=1,
-            )
-        filepath = create_schema_migration(
-            args.directory, args.message, prev_number + 1
+try:
+    prev_number, prev_date = migration_file_header(prev)
+except (OSError, IOError, ValueError) as error:
+    exit(error=error)
+
+data_changes = any_changes_since(db, prev_date, args.tables)
+if args.check:
+    msg = "Data changes detected" if data_changes else "No data changes detected"
+elif args.schema:
+    if data_changes:
+        exit(
+            "Data changes detected create a data migration before a schema migration",
+            code=1,
         )
-        msg = f"Migration file created at {filepath}"
-    elif create:
-        filepath = create_data_migration(
-            db, args.directory, args.message, prev_number + 1, prev_date, args.tables
-        )
-        msg = f"Migration file created at {filepath}"
+    filepath = create_schema_migration(args.directory, args.message, prev_number + 1)
+    msg = f"Migration file created at {filepath}"
+elif create:
+    filepath = create_data_migration(
+        db, args.directory, args.message, prev_number + 1, prev_date, args.tables
+    )
+    msg = f"Migration file created at {filepath}"
 
-    exit(msg)
+exit(msg)

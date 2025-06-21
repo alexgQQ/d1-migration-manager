@@ -3,9 +3,9 @@ import re
 import sqlite3
 from datetime import UTC, datetime
 from glob import glob
-from typing import Iterator, Optional
+from typing import Optional
 
-from d1_migration_manager.sql import sql_changes_since
+from d1_migration_manager.sql import iter_sql_changes, iter_sql_dump
 
 
 class MigrationFile:
@@ -82,28 +82,17 @@ class MigrationFile:
         return last
 
 
-def iter_data_migration(
-    db: sqlite3.Connection, since: datetime, tables: Optional[list[str]] = None
-) -> Iterator[str]:
-    yield "PRAGMA foreign_keys=OFF;"
-    yield "BEGIN TRANSACTION;"
-    for sql in sql_changes_since(db, since, tables):
-        yield sql
-    yield "COMMIT;"
-
-
-def iter_sql_dump(db: sqlite3.Connection) -> Iterator[str]:
-    yield "PRAGMA foreign_keys=OFF;"
-    yield "BEGIN TRANSACTION;"
-    # TODO: python 3.13+ has a filter arg for this to exclude objects
-    # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
-    # for now it would have to just be a str check to exclude any table
-    for line in db.iterdump():
-        yield line
-    yield "COMMIT;"
-
-
 def create_migration_file(directory: str, message: str, number: int) -> str:
+    """Create a blank migration file in sequence.
+
+    Args:
+        directory: The directory containing migration files.
+        message: A unique message relating to the migration, special characters are dropped and will be formatted as snake case.
+        number: The ordered number of the migration.
+
+    Returns:
+        The filepath of the newly created file.
+    """
     now = datetime.now(UTC)
     filename = MigrationFile.filename(message, number)
     filepath = os.path.join(directory, filename)
@@ -121,37 +110,91 @@ def create_data_migration(
     prev_date: datetime,
     tables: Optional[list[str]] = None,
 ) -> str:
-    """Create a migration file containing INSERT|UPDATE|DELETE statements representing audit changes"""
+    """Create a migration file containing INSERT|UPDATE|DELETE statements representing data changes changes.
+
+    Args:
+        db: A connection to a sqlite database.
+        directory: The directory containing migration files.
+        message: A unique message relating to the migration, special characters are dropped and will be formatted as snake case.
+        number: The ordered number of the migration.
+        prev_date: A datetime to check from up until now.
+        tables: An optional list of database tables to check against. If None it applies to all audited tables.
+
+    Returns:
+        The filepath of the newly created file.
+    """
     filepath = create_migration_file(directory, message, number)
-    with open(filepath, "w") as fobj:
-        for sql in iter_data_migration(db, prev_date, tables):
+    with open(filepath, "a") as fobj:
+        for sql in iter_sql_changes(db, prev_date, tables):
             fobj.write(sql + "\n")
     return filepath
 
 
 def create_schema_migration(directory: str, message: str, number: int) -> str:
-    """Create a blank migration file in sequence"""
+    """Create a blank migration file for manual editing.
+
+    Args:
+        directory: The directory containing migration files.
+        message: A unique message relating to the migration, special characters are dropped and will be formatted as snake case.
+        number: The ordered number of the migration.
+
+    Returns:
+        The filepath of the newly created file.
+    """
     return create_migration_file(directory, message, number)
 
 
 def create_initial_migration(
     db: sqlite3.Connection, directory: str, message: str, number: int
 ) -> str:
-    """Create a sql dump as the initial migration"""
+    """Create a sql dump as the initial migration.
+
+    Args:
+        db: A connection to a sqlite database.
+        directory: The directory containing migration files.
+        message: A unique message relating to the migration, special characters are dropped and will be formatted as snake case.
+        number: The ordered number of the migration.
+
+    Returns:
+        The filepath of the newly created file.
+    """
     filepath = create_migration_file(directory, message, number)
-    with open(filepath, "w") as fobj:
+    with open(filepath, "a") as fobj:
         for line in iter_sql_dump(db):
             fobj.write(line + "\n")
     return filepath
 
 
 def latest_migration(directory: str) -> str | None:
-    """Returns the latest migration file in a directory"""
+    """
+    Returns the latest migration file in a directory.
+
+    Args:
+        directory: The directory containing migration files.
+
+    Returns:
+        The most recent migration file. None if the directory is empty.
+
+    Raises:
+        RuntimeError: If the directory does not contain recognized migration files.
+    """
     return MigrationFile.latest(directory)
 
 
 def migration_file_header(migration_file: str) -> tuple[int, datetime]:
-    """Read the header information from a migration file"""
+    """
+    Read the header information from a migration file.
+
+    Args:
+        migration_file: A migration file.
+
+    Returns:
+        The numbered order and creation datetime of a migration file.
+
+    Raises:
+        OSError: If the file does not exist or is unreadable.
+        ValueError: If the file header is unable to be parsed.
+    """
     with open(migration_file, "r") as fobj:
         header = fobj.readline().strip().strip("\n")
     return MigrationFile.parse_header(header)

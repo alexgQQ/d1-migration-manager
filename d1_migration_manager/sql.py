@@ -279,7 +279,11 @@ def track_changes(
     tables: Optional[list[str]] = None,
 ) -> None:
     """
-    Adds a transactional change feed to the target sqlite database.
+    Adds transactional change triggers to a sqlite database.
+
+    Args:
+        db: A connection to a sqlite database.
+        tables: A list of table names to apply to. If None this applies to all tables except system or audit tables.
     """
     with db:
         if db.in_transaction:
@@ -301,7 +305,11 @@ def untrack_changes(
     tables: Optional[list[str]] = None,
 ) -> None:
     """
-    Removes transactional change triggers to the target sqlite database.
+    Removes transactional change triggers to a sqlite database.
+
+    Args:
+        db: A connection to a sqlite database.
+        tables: A list of table names to apply to. If None this applies to all tables except system or audit tables.
     """
     with db:
         if db.in_transaction:
@@ -340,8 +348,45 @@ def any_changes_since(
     Args:
         db: A connection to a sqlite database.
         dt: A datetime to check from up until now.
+        tables: A list of table names to apply to. If None this applies to all audited tables.
 
     Returns:
         Whether or not there are new data changes.
     """
     return ChangeEvent.any_since(db, dt, tables)
+
+
+def iter_sql_changes(
+    db: sqlite3.Connection, since: datetime, tables: Optional[list[str]] = None
+) -> Iterator[str]:
+    """Generator that yields INSERT|UPDATE|DELETE statements representing chronological data changes.
+
+    Args:
+        db: A connection to a sqlite database.
+        since: A datetime to check from up until now.
+        tables: An optional list of database tables to check against. If None it applies to all audited tables.
+
+    Yield:
+        str: The next SQL statement.
+    """
+    yield "PRAGMA foreign_keys=OFF;"
+    yield "BEGIN TRANSACTION;"
+    for sql in sql_changes_since(db, since, tables):
+        yield sql
+    yield "COMMIT;"
+
+
+def iter_sql_dump(db: sqlite3.Connection) -> Iterator[str]:
+    """Generator that yields SQL statements for a sql dump.
+
+    Args:
+        db: A connection to a sqlite database.
+
+    Yield:
+        str: The next SQL statement.
+    """
+    # TODO: python 3.13+ has a filter arg for this to exclude objects
+    # https://docs.python.org/3.13/library/sqlite3.html#sqlite3.Cursor
+    # for now it would have to just be a str check to exclude any table
+    for line in db.iterdump():
+        yield line

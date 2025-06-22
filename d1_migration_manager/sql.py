@@ -56,13 +56,13 @@ class SQL:
         values.append(instance_id)
 
         sql = (
-            f"UPDATE {self.table} SET {','.join(columns)} WHERE ({self.table}.id = ?);"
+            f"UPDATE {self.table} SET {','.join(columns)} WHERE (id = ?);"
         )
         return self.parameterize(sql, values)
 
     def delete(self, instance_id: int) -> str:
         """Create an DELETE statement on a table for an instance"""
-        sql = f"DELETE FROM {self.table} WHERE ({self.table}.id = ?);"
+        sql = f"DELETE FROM {self.table} WHERE (id = ?);"
         return self.parameterize(sql, [instance_id])
 
 
@@ -156,7 +156,7 @@ class ChangeEvent(NamedTuple):
         db.execute(time_id_index)
 
     @staticmethod
-    def sql_from_change(event: Self) -> str:
+    def sql_from_change(event: Self) -> str | None:
         if event.type == "created":
             new = event.data["new"]
             return SQL(event.table_source).insert(new)
@@ -168,6 +168,10 @@ class ChangeEvent(NamedTuple):
                 if new_val == old[key]:
                     continue
                 diff[key] = new_val
+            # TODO: A bit of a safeguard as sometimes an update with no changes gets triggered
+            # and this will cause malformed SQL to be generated
+            if diff == {}:
+                return None
             return SQL(event.table_source).update(event.instance, diff)
         elif event.type == "deleted":
             return SQL(event.table_source).delete(event.instance)
@@ -268,6 +272,7 @@ def all_tables(db: sqlite3.Connection) -> list[str]:
     SELECT tbl_name FROM sqlite_master
     WHERE type='table'
     AND tbl_name NOT LIKE 'sqlite_%'
+    AND tbl_name NOT LIKE 'd1_migrations'
     AND tbl_name NOT LIKE '{ChangeEvent.table_name()}'
     """
     tables = [row[0] for row in db.execute(query)]
@@ -337,7 +342,9 @@ def sql_changes_since(
     # https://www.sqlite.org/autoinc.html
     # For now it is best to just emit all events as sql and do no reconciliation.
     for event in ChangeEvent.events_since(db, since, tables):
-        yield ChangeEvent.sql_from_change(event)
+        if (sql := ChangeEvent.sql_from_change(event)) is None:
+            continue
+        yield sql
 
 
 def any_changes_since(
@@ -369,11 +376,11 @@ def iter_sql_changes(
     Yield:
         str: The next SQL statement.
     """
-    yield "PRAGMA foreign_keys=OFF;"
-    yield "BEGIN TRANSACTION;"
+    # TODO: Sometimes the wrangler interface errors when BEGIN TRANSACTION and COMMIT are used
+    # as they prefer to use a javascript interface, just omit it for now
+    yield "PRAGMA defer_foreign_keys=TRUE;"
     for sql in sql_changes_since(db, since, tables):
         yield sql
-    yield "COMMIT;"
 
 
 def iter_sql_dump(db: sqlite3.Connection) -> Iterator[str]:

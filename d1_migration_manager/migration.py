@@ -93,6 +93,8 @@ def create_migration_file(directory: str, message: str, number: int) -> str:
     Returns:
         The filepath of the newly created file.
     """
+    # TODO: I ran into an issue where the wrangler interface will sort files with `initial` in the message in an odd way
+    # where the numbered order is ignored, so a message containing `initial` should be avoided unless for the initial migration
     now = datetime.now(UTC)
     filename = MigrationFile.filename(message, number)
     filepath = os.path.join(directory, filename)
@@ -158,6 +160,8 @@ def create_initial_migration(
     Returns:
         The filepath of the newly created file.
     """
+    # TODO This should really do a schema dump first. After some testing the wrangler interface works better with thay
+    # and it makes a better process.
     filepath = create_migration_file(directory, message, number)
     with open(filepath, "a") as fobj:
         for line in iter_sql_dump(db):
